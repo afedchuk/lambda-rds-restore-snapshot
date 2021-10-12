@@ -2,8 +2,15 @@
   "name": "rds-restore-to-staging",
   "private": true,
   "version": "1.0.0",
-  "description": "Helps to restore production rds to staging.",
   "license": "MIT",
+  "author": {
+    "name": "Andy Fedchuk",
+    "email": "andriy.fedchuk@gmail.com",
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "description": "Helps to restore production rds to staging.",
   "devDependencies": {
     "aws-sdk": "^2.1005.0",
     "serverless": "^2.62.0",
