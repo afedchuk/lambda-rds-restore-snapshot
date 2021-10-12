@@ -1,10 +1,12 @@
 # RDS Sync Service
 
-Service helps to restore RDS instance snapshot created in another RDS. Useful in cases when you need to have same data on both RDS instances, of course it's not working in a way of syncing real time data
-but as example you need to have staging environment and you need to work with production data without touching the data located on production RDS.
+Service helps to restore RDS instance snapshot created in another RDS. Useful in cases when you need to have same data on both RDS instances or make just need a copy of your running RDS instance, 
+of course it's not working in a way of syncing real time data
+but as example you need to have staging environment and 
+you need to work with production data without touching the data located on production RDS.
 
-It works as a cron job, every day it's recreating a new target RDS instance from existing one. It will check if the existing instance created, creating the latest snapshot if needed, this option you can disable in `serverless.yml` in provider section variable called `CREATE_LATEST_SNAPSHOT`.
-After that a new target will restore with latest snapshot created on existing RDS with deleting a previous target instance.
+It works as a cron job, it's recreating a new target RDS instance from existing one. It will check if the existing instance created, creating the latest snapshot if needed, this option you can disable in `serverless.yml` in provider section variable called `CREATE_LATEST_SNAPSHOT`.
+After that a new target will restore with a latest snapshot created on existing RDS with deleting a previous target instance.
 
 ## Requirements
 

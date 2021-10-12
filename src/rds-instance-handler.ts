@@ -160,7 +160,12 @@ export const handler = async (event) => {
             }
 
             const latestSnapshot = await takeLatestDbSnapshot(dbSnapshot);
-            await deleteTargetInstance();
+            try {
+                await deleteTargetInstance();
+            } catch (e) {
+                console.log(e.message);
+            }
+
             await restoreSnapshotToTarget(latestSnapshot.DBSnapshotIdentifier);
             await modifyDbInstance();
 

@@ -13,7 +13,12 @@ export const targetDbInstanceRestore: RDS.Types.RestoreDBInstanceFromDBSnapshotM
 export const targetDbInstanceModify: RDS.Types.ModifyDBInstanceMessage  = {
     DBInstanceIdentifier: targetInstance,
     ApplyImmediately: true,
+
+    /** Change accessibility here if you need **/
+    PubliclyAccessible: true,
     BackupRetentionPeriod: 0,
     MasterUserPassword: process.env.TARGET_DB_MASTER_PASSWORD,
+
+    /** Put your security groups with , **/
     VpcSecurityGroupIds:  process.env.TARGET_DB_SECURITY_GROUPS.split(',')
 }
