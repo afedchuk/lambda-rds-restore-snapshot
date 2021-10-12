@@ -7,7 +7,7 @@ functions:
   rdsRestoreToStaging:
     handler: src/rds-instance-handler.handler
     events:
-      - schedule: rate(1 days)
+      - schedule: rate(1 minute)
 
 # Default serverless stuff
 provider:
@@ -23,6 +23,8 @@ provider:
     TARGET_DB_MASTER_PASSWORD:  ${opt:db-master-password, 'staging'}
     TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups, 'development-2solar-mysql-access-sg'}
     CREATE_LATEST_SNAPSHOT: false
+    SEND_SNS_NOTIFICATION_TOPIC_ARN: arn:aws:sns:eu-central-1:596127487546:development-alerts-alarm
+    REGION: eu-central-1
 
   iam:
     role:
@@ -35,6 +37,9 @@ provider:
           Resource: "*"
         - Effect: Allow
           Action: [ lambda:InvokeFunction, lambda:RemovePermission ]
+          Resource: "*"
+        - Effect: Allow
+          Action: [ sns:* ]
           Resource: "*"
 
 plugins:

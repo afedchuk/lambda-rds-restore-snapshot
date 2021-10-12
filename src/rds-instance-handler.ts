@@ -1,7 +1,22 @@
 import AWS, {RDS} from 'aws-sdk';
 import {DBSnapshot} from "aws-sdk/clients/rds";
 import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./rds-instance-config";
-const rds = new AWS.RDS();
+
+const rdsConfig = {
+    apiVersion: '2014-10-31',
+    region: process.env.REGION
+}
+
+const snsConfig = {
+    apiVersion: '2010-03-31',
+}
+
+/**
+ * If you need to work with cross regions then
+ * you can make another copy of rds instance with config specified.
+ */
+const rds = new AWS.RDS(rdsConfig);
+const sns = new AWS.SNS(snsConfig);
 
 /**
  * Check if rds instance specified created on aws
@@ -118,6 +133,20 @@ const takeLatestDbSnapshot = async (snapshotIdentifier: string = null): Promise<
     return null;
 }
 
+const notify = async (data): Promise<void> => {
+    if (!process.env.SEND_SNS_NOTIFICATION_TOPIC_ARN) {
+        return;
+    }
+
+    const params = {
+        Message: data.message,
+        Subject: data.subject,
+        TopicArn: process.env.SEND_SNS_NOTIFICATION_TOPIC_ARN
+    };
+
+    await sns.publish(params).promise();
+}
+
 /**
  * Main handler
  * @param event
@@ -134,8 +163,23 @@ export const handler = async (event) => {
             await deleteTargetInstance();
             await restoreSnapshotToTarget(latestSnapshot.DBSnapshotIdentifier);
             await modifyDbInstance();
+
+            await notify({
+                subject: "[AWS] RDS Snapshot Restored",
+                message: `DB Instance: ${restoreInstance}
+Region: ${rdsConfig.region}
+Latest Snapshot: ${latestSnapshot.DBSnapshotIdentifier},
+Restored To: ${targetInstance}`
+            });
         }
     } catch (e) {
         console.log(e.message);
+
+        await notify({
+            subject: "[AWS] RDS Snapshot Failed",
+            message: `DB Instance: ${restoreInstance}
+Region: ${rdsConfig.region}
+Error: ${e.stack}`
+        });
     }
 }
