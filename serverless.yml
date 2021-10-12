@@ -7,7 +7,7 @@ functions:
   rdsRestoreToStaging:
     handler: src/rds-instance-handler.handler
     events:
-      - schedule: rate(1 minute)
+      - schedule: rate(1 days)
 
 # Default serverless stuff
 provider:
