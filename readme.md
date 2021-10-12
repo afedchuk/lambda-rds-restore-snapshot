@@ -1,6 +1,6 @@
-# RDS Sync Service
+# AWS RDS Sync Service
 
-Service helps to restore RDS instance snapshot created in another RDS. Useful in cases when you need to have same data on both RDS instances or make just need a copy of your running RDS instance, 
+Service helps to restore AWS RDS instance snapshot created in another RDS. Useful in cases when you need to have same data on both RDS instances or make just need a copy of your running RDS instance, 
 of course it's not working in a way of syncing real time data
 but as example you need to have staging environment and 
 you need to work with production data without touching the data located on production RDS.
