@@ -1,0 +1,54 @@
+service: rds-restore-to-staging-service
+
+frameworkVersion: '2'
+
+# Attaching handlers
+functions:
+  rdsRestoreToStaging:
+    handler: src/rds-instance-handler.handler
+    events:
+      - schedule: rate(1 minute)
+
+# Default serverless stuff
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: ${opt:region, 'eu-central-1'}
+  lambdaHashingVersion: 20201221
+  environment:
+    RESTORE_FROM_INSTANCE_ID: ${opt:db-restore-instance, 'production-2solar-services'}
+    TARGET_INSTANCE_ID: ${opt:db-targert-instance, 'staging-2solar-services'}
+    TARGET_DB_INSTANCE_CLASS: ${opt:db-instance-class, 'db.t2.micro'}
+    TARGET_DB_SUBNET_GROUP_NAME:  ${opt:db-subnet-group-name, 'staging-2solar-subnet-group'}
+    TARGET_DB_MASTER_PASSWORD:  ${opt:db-master-password, 'staging'}
+    TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups, 'development-2solar-mysql-access-sg'}
+    CREATE_LATEST_SNAPSHOT: false
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: [ sts:AssumeRole ]
+          Resource: "*"
+        - Effect: Allow
+          Action: [ rds:* ]
+          Resource: "*"
+        - Effect: Allow
+          Action: [ lambda:InvokeFunction, lambda:RemovePermission ]
+          Resource: "*"
+
+plugins:
+  - serverless-offline
+  - serverless-webpack
+
+package:
+  patterns:
+    - node_modules/aws-sdk/**
+
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules:
+      forceExclude:
+        - aws-sdk
+    packager: yarn
