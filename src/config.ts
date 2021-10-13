@@ -51,3 +51,14 @@ export const targetDbInstanceModify: RDS.Types.ModifyDBInstanceMessage  = {
         ? process.env.TARGET_DB_SECURITY_GROUPS.split(',')
         : []
 }
+
+/**
+ * MySql DB config for connecting to target DB instance and modify privileges
+ */
+export const targetDbConfig = {
+    host: process.env.DB_HOST,
+    database: process.env.DB_DATABASE,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT ?? 3306
+}

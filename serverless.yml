@@ -13,6 +13,8 @@ functions:
 provider:
   name: aws
   runtime: nodejs14.x
+  stage: ${opt:stage, 'development'}
+  targetStage: ${opt:target-stage, 'staging'}
   region: ${opt:region, 'eu-central-1'}
   lambdaHashingVersion: 20201221
   environment:
@@ -20,11 +22,16 @@ provider:
     TARGET_INSTANCE_ID: ${opt:db-targert-instance, 'staging-2solar-services'}
     TARGET_DB_INSTANCE_CLASS: ${opt:db-instance-class, 'db.t2.micro'}
     TARGET_DB_SUBNET_GROUP_NAME:  ${opt:db-subnet-group-name, 'staging-2solar-subnet-group'}
-    TARGET_DB_MASTER_PASSWORD:  ${opt:db-master-password, 'staging'}
-    TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups, 'development-2solar-mysql-access-sg'}
+    TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups, 'sg-0952f97588d550e6e'}
+    SSM_PATH: /${self:provider.targetStage}-db/
     CREATE_LATEST_SNAPSHOT: false
     SEND_SNS_NOTIFICATION_TOPIC_ARN: arn:aws:sns:eu-central-1:596127487546:development-alerts-alarm
     REGION: eu-central-1
+
+    DB_HOST: ${ssm:/${self:provider.targetStage}-db/host}
+    DB_DATABASE: ${ssm:/${self:provider.stage}-db/portal-name}
+    DB_USER: ${ssm:/${self:provider.stage}-db/portal-username~true}
+    DB_PASSWORD: ${ssm:/${self:provider.stage}-db/portal-password~true}
 
   iam:
     role:
@@ -39,8 +46,12 @@ provider:
           Action: [ lambda:InvokeFunction, lambda:RemovePermission ]
           Resource: "*"
         - Effect: Allow
-          Action: [ sns:* ]
+          Action: [ ssm:GetParametersByPath ]
           Resource: "*"
+        - Effect: Allow
+          Action: [ sns:Publish ]
+          Resource:
+            - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${self:custom.sendNotificationsTopicName}"
 
 plugins:
   - serverless-offline
@@ -51,6 +62,7 @@ package:
     - node_modules/aws-sdk/**
 
 custom:
+  sendNotificationsTopicName: development-alerts-alarm
   webpack:
     webpackConfig: ./webpack.config.js
     includeModules:

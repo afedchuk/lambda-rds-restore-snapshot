@@ -1,7 +1,48 @@
 import {SSM} from 'aws-sdk';
+import {targetDbConfig} from "./config";
 
 const ssm = new SSM();
 const ssmPath = process.env.SSM_PATH;
+const dbServicePostPrefix = '_service';
+
+/** Connect ro target Db as a root user to update privileges **/
+const connection = async () => {
+    const mysql = require('serverless-mysql')();
+
+    mysql.config(targetDbConfig);
+
+    await mysql.connect();
+
+    return mysql;
+}
+
+/**
+ * Get the list of users, filter and delete them
+ * @param targetConnection
+ */
+const selectAllUsersOnTargetDbInstance = async (targetConnection): Promise<void> => {
+    const promises = (await targetConnection.query(`SELECT User, Host FROM mysql.user`))
+        .filter((v) => (v.Host == '%' && v.User != targetDbConfig.user))
+        .map(async (v) => {
+
+            return deleteUsersSpecifiedInTheList(targetConnection, v.User);
+        });
+
+    targetConnection.end();
+
+    await Promise.all(promises);
+}
+
+/**
+ * Clean up mysql user table
+ * @param targetConnection
+ * @param user
+ */
+const deleteUsersSpecifiedInTheList = async (targetConnection, user): Promise<void> => {
+    await targetConnection.query(`DELETE FROM mysql.user WHERE User='${user}'`);
+
+    targetConnection.end();
+}
 
 /**
  * Get all RDS instance credentials from SSM service by path,
@@ -40,11 +81,14 @@ const getUsersCredentialsFromSsm = async () => {
     return await retrieveParameters();
 }
 
+const createAndGrantPermissionForMappedUsers = async (data) => {
+
+}
+
 /**
  * Map all parameters extracted from SSM
- * @param event
  */
-export const updateDbInstanceUsers = async (event) => {
+export const updateDbInstanceUsers = async () => {
 
     const result = await getUsersCredentialsFromSsm();
     const mapped = [];
@@ -60,6 +104,10 @@ export const updateDbInstanceUsers = async (event) => {
             [parameter]: value.value
         });
     });
+
+    const targetConnection =  await connection();
+    await selectAllUsersOnTargetDbInstance(targetConnection);
+    await createAndGrantPermissionForMappedUsers(mapped);
 
     return mapped;
 }
