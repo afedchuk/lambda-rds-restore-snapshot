@@ -1,6 +1,8 @@
-import AWS, {RDS} from 'aws-sdk';
+import {RDS, SNS} from 'aws-sdk';
+const AWS = require('aws-sdk');
 import {DBSnapshot} from "aws-sdk/clients/rds";
-import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./rds-instance-config";
+import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./config";
+import {updateDbInstanceUsers} from "./mysql-grant-privileges-handler";
 
 const rdsConfig = {
     apiVersion: '2014-10-31',
@@ -11,17 +13,12 @@ const snsConfig = {
     apiVersion: '2010-03-31',
 }
 
-/**
- * If you need to work with cross regions then
- * you can make another copy of rds instance with config specified.
- */
-const rds = new AWS.RDS(rdsConfig);
-const sns = new AWS.SNS(snsConfig);
+export let dbSnapshot = null;
 
 /**
  * Check if rds instance specified created on aws
  */
-const checkExistingInstance = async (): Promise<boolean> => {
+const checkExistingInstance = async (rds: RDS): Promise<boolean> => {
     console.log(`Checking for an existing instance with the identifier ${restoreInstance}`);
 
     const instance: RDS.Types.DBInstanceMessage = await rds.describeDBInstances({
@@ -34,7 +31,7 @@ const checkExistingInstance = async (): Promise<boolean> => {
 /**
  * Should create a new snapshot to restore it to new environment?
  */
-const createSnapshot = async (): Promise<DBSnapshot> => {
+const createSnapshot = async (rds: RDS): Promise<any> => {
     console.log(`Creating manual snapshot of ${restoreInstance}`);
 
     const currentDate = new Date();
@@ -58,7 +55,7 @@ const createSnapshot = async (): Promise<DBSnapshot> => {
 /**
  * Delete target instance before restoring snapshot
  */
-const deleteTargetInstance = async(): Promise<RDS.Types.DBInstanceMessage|void> => {
+const deleteTargetInstance = async(rds: RDS): Promise<RDS.Types.DBInstanceMessage|void> => {
     console.log(`Deleting existing instance found with identifier ${targetInstance}`);
 
     if (targetInstance == restoreInstance) {
@@ -84,7 +81,7 @@ const deleteTargetInstance = async(): Promise<RDS.Types.DBInstanceMessage|void> 
     return result;
 }
 
-const restoreSnapshotToTarget = async (snapshotIdentifier): Promise<void> => {
+const restoreSnapshotToTarget = async (rds: RDS, snapshotIdentifier): Promise<void> => {
     targetDbInstanceRestore.DBSnapshotIdentifier = snapshotIdentifier;
 
     await rds.restoreDBInstanceFromDBSnapshot(targetDbInstanceRestore).promise();
@@ -98,7 +95,7 @@ const restoreSnapshotToTarget = async (snapshotIdentifier): Promise<void> => {
 /**
  * The last things is to update instance created with vpc security groups, password, ect.
  */
-const modifyDbInstance = async(): Promise<void> => {
+const modifyDbInstance = async(rds: RDS): Promise<void> => {
     await rds.modifyDBInstance(targetDbInstanceModify).promise();
     await rds.waitFor('dBInstanceAvailable', {
         DBInstanceIdentifier:targetInstance
@@ -109,9 +106,10 @@ const modifyDbInstance = async(): Promise<void> => {
 
 /**
  * Looking for the latest snapshot or specified
+ * @param rds
  * @param snapshotIdentifier
  */
-const takeLatestDbSnapshot = async (snapshotIdentifier: string = null): Promise<DBSnapshot|null> => {
+const takeLatestDbSnapshot = async (rds: RDS, snapshotIdentifier: string = null): Promise<DBSnapshot|null> => {
     console.log(`Finding latest snapshot for ${restoreInstance}`);
 
     const params: RDS.Types.DescribeDBSnapshotsMessage  = {
@@ -133,7 +131,7 @@ const takeLatestDbSnapshot = async (snapshotIdentifier: string = null): Promise<
     return null;
 }
 
-const notify = async (data): Promise<void> => {
+const notify = async (sns: SNS, data): Promise<void> => {
     if (!process.env.SEND_SNS_NOTIFICATION_TOPIC_ARN) {
         return;
     }
@@ -149,42 +147,53 @@ const notify = async (data): Promise<void> => {
 
 /**
  * Main handler
- * @param event
  */
-export const handler = async (event) => {
+export const handler = async () => {
+    /**
+     * If you need to work with cross regions then
+     * you can make another copy of rds instance with config specified.
+     */
+
+    const rds = new AWS.RDS(rdsConfig);
+    const sns = new AWS.SNS(snsConfig);
+
     try {
-        if (await checkExistingInstance()) {
-            let dbSnapshot = null;
-            if (process.env.CREATE_LATEST_SNAPSHOT =='true') {
-                dbSnapshot = await createSnapshot();
-            }
+        if (!await checkExistingInstance(rds)) {
 
-            const latestSnapshot = await takeLatestDbSnapshot(dbSnapshot);
-            try {
-                await deleteTargetInstance();
-            } catch (e) {
-                console.log(e.message);
-            }
+           return false;
+        }
 
-            await restoreSnapshotToTarget(latestSnapshot.DBSnapshotIdentifier);
-            await modifyDbInstance();
+        if (process.env.CREATE_LATEST_SNAPSHOT == 'true') {
+            dbSnapshot = await createSnapshot(rds);
+        }
 
-            await notify({
-                subject: "[AWS] RDS Snapshot Restored",
-                message: `DB Instance: ${restoreInstance}
+        const latestSnapshot = await takeLatestDbSnapshot(rds, dbSnapshot);
+        try {
+            await deleteTargetInstance(rds);
+        } catch (e) {
+            console.log(e.message);
+        }
+
+        await restoreSnapshotToTarget(rds, latestSnapshot.DBSnapshotIdentifier);
+        await modifyDbInstance(rds);
+
+        await updateDbInstanceUsers(event);
+
+        await notify(sns,{
+            subject: "[AWS] RDS Snapshot Restored",
+            message: `DB Instance: ${restoreInstance}
 Region: ${rdsConfig.region}
 Latest Snapshot: ${latestSnapshot.DBSnapshotIdentifier},
 Restored To: ${targetInstance}`
-            });
-        }
+        });
     } catch (e) {
-        console.log(e.message);
+        console.log(e);
 
-        await notify({
+        await notify(sns,{
             subject: "[AWS] RDS Snapshot Failed",
             message: `DB Instance: ${restoreInstance}
 Region: ${rdsConfig.region}
 Error: ${e.stack}`
-        });
+         });
     }
 }

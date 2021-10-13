@@ -15,10 +15,11 @@ const getUsersCredentialsFromSsm = async () => {
         const params: SSM.Types.GetParametersByPathRequest = {
             Path: ssmPath,
             WithDecryption: true,
-            MaxResults: 10
         }
 
         if (nextToken) {
+
+            /** Look if a token present to start fetch the next results from SSM. **/
             params.NextToken = nextToken;
         }
 

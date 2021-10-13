@@ -1,6 +1,8 @@
 .serverless
 .webpack
 .idea/
+coverage/
 node_modules/
 temp
 yarn.lock
+yarn-error.log
