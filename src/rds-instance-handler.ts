@@ -49,7 +49,7 @@ const createSnapshot = async (rds: RDS): Promise<any> => {
 
     console.log(`Finished creating new snapshot ${snapshotId} from ${restoreInstance}`);
 
-    return result.DBSnapshot;
+    return result.DBSnapshot.DBSnapshotIdentifier;
 }
 
 /**

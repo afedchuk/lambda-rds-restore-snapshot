@@ -38,8 +38,38 @@ describe("RDS Instance", () => {
 
     it('should not create a new snapshot', async () => {
         process.env.CREATE_LATEST_SNAPSHOT = 'false';
+
         await handler();
 
-        expect(dbSnapshot).toEqual(null);
+        expect(dbSnapshot).toBeNull();
     });
+
+    it('should create a new snapshot', async () => {
+        process.env.CREATE_LATEST_SNAPSHOT = 'true';
+        AWSMock.mock('RDS', 'createDBSnapshot', (params, callback: Function) => {
+            callback(null, Promise.resolve({
+                DBSnapshot: {
+                    DBSnapshotIdentifier: 'db319f37-1995-4cc1-9e6c-878405684787',
+                    DBInstanceIdentifier: 'db-restore-instance',
+                }
+            }));
+        });
+
+
+        AWSMock.mock('RDS', 'waitFor', (state, params, callback: Function) => {
+            callback(null, Promise.resolve({
+                DBSnapshots: [
+                    {
+                        DBSnapshotIdentifier: 'db319f37-1995-4cc1-9e6c-878405684787',
+                        DBInstanceIdentifier: 'db-restore-instance',
+                    }
+                ]
+            }));
+        });
+
+        await handler();
+
+        expect(dbSnapshot).toEqual('db319f37-1995-4cc1-9e6c-878405684787');
+    });
+
 });
