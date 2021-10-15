@@ -57,14 +57,7 @@ describe("RDS Instance", () => {
 
 
         AWSMock.mock('RDS', 'waitFor', (state, params, callback: Function) => {
-            callback(null, Promise.resolve({
-                DBSnapshots: [
-                    {
-                        DBSnapshotIdentifier: 'db319f37-1995-4cc1-9e6c-878405684787',
-                        DBInstanceIdentifier: 'db-restore-instance',
-                    }
-                ]
-            }));
+            callback(null, Promise.resolve({}));
         });
 
         await handler();

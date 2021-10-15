@@ -177,7 +177,7 @@ export const handler = async () => {
         await restoreSnapshotToTarget(rds, latestSnapshot.DBSnapshotIdentifier);
         await modifyDbInstance(rds);
 
-        await updateDbInstanceUsers(event);
+         await updateDbInstanceUsers();
 
         await notify(sns,{
             subject: "[AWS] RDS Snapshot Restored",

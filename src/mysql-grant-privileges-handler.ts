@@ -8,7 +8,6 @@ const dbServicePostPrefix = '_service';
 /** Connect ro target Db as a root user to update privileges **/
 const connection = async () => {
     const mysql = require('serverless-mysql')();
-
     mysql.config(targetDbConfig);
 
     await mysql.connect();
@@ -25,7 +24,7 @@ const selectAllUsersOnTargetDbInstance = async (targetConnection): Promise<void>
         .filter((v) => (v.Host == '%' && v.User != targetDbConfig.user))
         .map(async (v) => {
 
-            return deleteUsersSpecifiedInTheList(targetConnection, v.User);
+            return deleteUsersSpecifiedInTheList(targetConnection, v);
         });
 
     targetConnection.end();
@@ -39,9 +38,36 @@ const selectAllUsersOnTargetDbInstance = async (targetConnection): Promise<void>
  * @param user
  */
 const deleteUsersSpecifiedInTheList = async (targetConnection, user): Promise<void> => {
-    await targetConnection.query(`DELETE FROM mysql.user WHERE User='${user}'`);
+    await targetConnection.query(`REVOKE ALL PRIVILEGES, GRANT OPTION FROM '${user.User}'@'${user.Host}'`);
+    await targetConnection.query(`DELETE
+                                  FROM mysql.user
+                                  WHERE User = '${user.User}'`);
 
-    targetConnection.end();
+    await targetConnection.end();
+}
+
+/**
+ * Reading an execute custom queries from sql file.
+ * @param targetConnection
+ */
+const runCustomQueries = async(targetConnection): Promise<void> => {
+    const fs = require("fs");
+
+    try {
+        const dataSql = await fs.readFileSync('./src/queries/mysql.sql').toString();
+        const data = dataSql.toString().split(";");
+
+        await Promise.all(data.map(async query => {
+            if (!query) {
+                return;
+            }
+
+            await targetConnection.query(query);
+        }));
+    } catch (error) {
+        console.log(`File not found. ${error.message}`);
+    }
+
 }
 
 /**
@@ -52,7 +78,7 @@ const deleteUsersSpecifiedInTheList = async (targetConnection, user): Promise<vo
  * where database-parameter is DB username or DB password
  */
 const getUsersCredentialsFromSsm = async () => {
-    const retrieveParameters = async (nextToken = null, data: {name: string, value: string}[] = []): Promise<any> => {
+    const retrieveParameters = async (nextToken = null, data: { name: string, value: string }[] = []): Promise<any> => {
         const params: SSM.Types.GetParametersByPathRequest = {
             Path: ssmPath,
             WithDecryption: true,
@@ -64,8 +90,8 @@ const getUsersCredentialsFromSsm = async () => {
             params.NextToken = nextToken;
         }
 
-        const result =  await ssm.getParametersByPath(params).promise();
-        if (result.Parameters.length == 0 ) {
+        const result = await ssm.getParametersByPath(params).promise();
+        if (result.Parameters.length == 0) {
 
             return;
         }
@@ -81,8 +107,38 @@ const getUsersCredentialsFromSsm = async () => {
     return await retrieveParameters();
 }
 
-const createAndGrantPermissionForMappedUsers = async (data) => {
+/**
+ * It should works with a next data structure:
+ * [
+ *    {
+ *     dbName${dbServicePostPrefix}: {
+ *         user: dbUser,
+ *         password: dbPassword
+ *     }
+ *   }
+ * ]
+ * @param targetConnection
+ * @param data
+ */
+const createAndGrantPermissionForMappedUsers = async (targetConnection, data) => {
+    const promises = Object.keys(data).map(async (v) => {
 
+        const existing = await targetConnection.query(`SELECT User, Host FROM mysql.user WHERE User = '${data[v]['username']}'`);
+        if (existing.length > 0) {
+
+            return;
+        }
+
+        await targetConnection.query(`CREATE user '${data[v]['username']}'
+            IDENTIFIED BY '${data[v]['password']}'`);
+
+        await targetConnection.query(`GRANT ALL PRIVILEGES
+            ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`);
+
+        await targetConnection.end();
+    });
+
+    await Promise.all(promises);
 }
 
 /**
@@ -100,14 +156,17 @@ export const updateDbInstanceUsers = async () => {
             return;
         }
 
-        mapped[service] = Object.assign( mapped[service] ?? {}, {
+        mapped[service] = Object.assign(mapped[service] ?? {}, {
             [parameter]: value.value
         });
     });
 
-    const targetConnection =  await connection();
+    const targetConnection = await connection();
     await selectAllUsersOnTargetDbInstance(targetConnection);
-    await createAndGrantPermissionForMappedUsers(mapped);
+    await createAndGrantPermissionForMappedUsers(targetConnection, mapped);
+
+    /** Optional step to modify db(s) data on target instance **/
+    await runCustomQueries(targetConnection);
 
     return mapped;
 }
