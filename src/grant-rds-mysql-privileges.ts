@@ -24,7 +24,7 @@ const selectAllUsersOnTargetDbInstance = async (targetConnection): Promise<void>
         .filter((v) => (v.Host == '%' && v.User != targetDbConfig.user))
         .map(async (v) => {
 
-            return deleteUsersSpecifiedInTheList(targetConnection, v);
+           // return deleteUsersSpecifiedInTheList(targetConnection, v);
         });
 
     targetConnection.end();
@@ -57,13 +57,14 @@ const runCustomQueries = async(targetConnection): Promise<void> => {
         const dataSql = await fs.readFileSync('./src/queries/mysql.sql').toString();
         const data = dataSql.toString().split(";");
 
-        await Promise.all(data.map(async query => {
-            if (!query) {
-                return;
+        let results = targetConnection.transaction();
+        data.forEach(query => {
+            if (query) {
+                results.query(query);
             }
+        });
 
-            await targetConnection.query(query);
-        }));
+        await results.commit();
     } catch (error) {
         console.log(`File not found. ${error.message}`);
     }
@@ -132,6 +133,8 @@ const createAndGrantPermissionForMappedUsers = async (targetConnection, data) =>
         await targetConnection.query(`CREATE user '${data[v]['username']}'
             IDENTIFIED BY '${data[v]['password']}'`);
 
+        console.log(`GRANT ALL PRIVILEGES
+            ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`)
         await targetConnection.query(`GRANT ALL PRIVILEGES
             ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`);
 
@@ -145,7 +148,6 @@ const createAndGrantPermissionForMappedUsers = async (targetConnection, data) =>
  * Map all parameters extracted from SSM
  */
 export const updateDbInstanceUsers = async () => {
-
     const result = await getUsersCredentialsFromSsm();
     const mapped = [];
     result.map(value => {
@@ -162,8 +164,8 @@ export const updateDbInstanceUsers = async () => {
     });
 
     const targetConnection = await connection();
-    await selectAllUsersOnTargetDbInstance(targetConnection);
-    await createAndGrantPermissionForMappedUsers(targetConnection, mapped);
+    //await selectAllUsersOnTargetDbInstance(targetConnection);
+    // await createAndGrantPermissionForMappedUsers(targetConnection, mapped);
 
     /** Optional step to modify db(s) data on target instance **/
     await runCustomQueries(targetConnection);

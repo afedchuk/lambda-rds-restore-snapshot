@@ -1,8 +1,9 @@
-import {RDS, SNS} from 'aws-sdk';
+import {EventBridge, RDS, SNS} from 'aws-sdk';
 const AWS = require('aws-sdk');
 import {DBSnapshot} from "aws-sdk/clients/rds";
 import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./config";
-import {updateDbInstanceUsers} from "./mysql-grant-privileges-handler";
+import {updateDbInstanceUsers} from "./grant-rds-mysql-privileges";
+import {RdsEventCategories} from "aws-sdk/clients/applicationinsights";
 
 const rdsConfig = {
     apiVersion: '2014-10-31',
@@ -15,10 +16,36 @@ const snsConfig = {
 
 export let dbSnapshot = null;
 
+const getTargetInstanceInfo = async (rds: RDS): Promise<boolean> => {
+    console.log(`Getting info for target instance ${targetInstance}`);
+
+    try {
+        await rds.waitFor('dBInstanceAvailable', {
+            DBInstanceIdentifier:targetInstance
+        }).promise();
+
+        const instances: RDS.Types.DBInstanceMessage = await rds.describeDBInstances({
+            DBInstanceIdentifier: targetInstance
+        }).promise();
+
+        if (instances.DBInstances.length > 0) {
+            const current = instances.DBInstances.shift();
+            const existingSecurityGroups = current.VpcSecurityGroups
+                .filter(value => (targetDbInstanceModify.VpcSecurityGroupIds.includes(value.VpcSecurityGroupId)));
+
+            return !!existingSecurityGroups.length;
+        }
+    } catch (e) {
+        console.log(`Could not fetch ${targetInstance} information. ${e.message}`);
+    }
+
+    return true;
+
+}
 /**
  * Check if rds instance specified created on aws
  */
-const checkExistingInstance = async (rds: RDS): Promise<boolean> => {
+const checkRestoreExistingInstance = async (rds: RDS): Promise<boolean> => {
     console.log(`Checking for an existing instance with the identifier ${restoreInstance}`);
 
     const instance: RDS.Types.DBInstanceMessage = await rds.describeDBInstances({
@@ -92,17 +119,6 @@ const restoreSnapshotToTarget = async (rds: RDS, snapshotIdentifier): Promise<vo
     console.log(`Finished creating instance ${targetInstance} from snapshot ${snapshotIdentifier}`);
 }
 
-/**
- * The last things is to update instance created with vpc security groups, password, ect.
- */
-const modifyDbInstance = async(rds: RDS): Promise<void> => {
-    await rds.modifyDBInstance(targetDbInstanceModify).promise();
-    await rds.waitFor('dBInstanceAvailable', {
-        DBInstanceIdentifier:targetInstance
-    }).promise();
-
-    console.log(`Finished updating ${targetInstance}`);
-}
 
 /**
  * Looking for the latest snapshot or specified
@@ -145,6 +161,64 @@ const notify = async (sns: SNS, data): Promise<void> => {
     await sns.publish(params).promise();
 }
 
+
+/**
+ * The last things is to update instance created with vpc security groups, password, ect.
+ */
+const modifyDbInstance = async(rds: RDS): Promise<void> => {
+    await rds.modifyDBInstance(targetDbInstanceModify).promise();
+    await rds.waitFor('dBInstanceAvailable', {
+        DBInstanceIdentifier:targetInstance
+    }).promise();
+
+    console.log(`Finished updating ${targetInstance}`);
+}
+
+/**
+ * Modify target instance
+ */
+export const modifyHandler = async () => {
+    const event = {
+        version: '0',
+        id: '322f9ce1-4f79-e22a-2533-9cefc2edae57',
+        'detail-type': 'RDS DB Instance Event',
+        source: 'aws.rds',
+        account: '596127487546',
+        time: '2021-10-17T08:50:57Z',
+        region: 'eu-central-1',
+        resources: [
+            'arn:aws:rds:eu-central-1:596127487546:db:staging-2solar-services'
+        ],
+        detail: {
+            EventCategories: [ 'backup' ],
+            SourceType: 'DB_INSTANCE',
+            SourceArn: 'arn:aws:rds:eu-central-1:596127487546:db:staging-2solar-services',
+            Date: '2021-10-17T08:50:57.755Z',
+            Message: 'Finished DB Instance backup',
+            SourceIdentifier: 'staging-2solar-services',
+            EventID: 'RDS-EVENT-0043'
+        }
+    };
+
+    console.log(event);
+
+    const detail = event.detail;
+
+
+    if (detail.EventCategories.includes('backup')
+        && detail.Message == 'Finished DB Instance backup'
+        && detail.SourceIdentifier == targetInstance) {
+
+
+        const rds = new AWS.RDS(rdsConfig);
+        const info = await getTargetInstanceInfo(rds);
+        //if (!info) {
+           // await modifyDbInstance(rds);
+            await updateDbInstanceUsers();
+       // }
+    }
+}
+
 /**
  * Main handler
  */
@@ -153,12 +227,11 @@ export const handler = async () => {
      * If you need to work with cross regions then
      * you can make another copy of rds instance with config specified.
      */
-
     const rds = new AWS.RDS(rdsConfig);
     const sns = new AWS.SNS(snsConfig);
 
     try {
-        if (!await checkExistingInstance(rds)) {
+        if (!await checkRestoreExistingInstance(rds)) {
 
            return false;
         }
@@ -175,17 +248,13 @@ export const handler = async () => {
         }
 
         await restoreSnapshotToTarget(rds, latestSnapshot.DBSnapshotIdentifier);
-        await modifyDbInstance(rds);
-
-         await updateDbInstanceUsers();
-
         await notify(sns,{
             subject: "[AWS] RDS Snapshot Restored",
             message: `DB Instance: ${restoreInstance}
 Region: ${rdsConfig.region}
 Latest Snapshot: ${latestSnapshot.DBSnapshotIdentifier},
 Restored To: ${targetInstance}`
-        });
+         });
     } catch (e) {
         console.log(e);
 
@@ -193,7 +262,7 @@ Restored To: ${targetInstance}`
             subject: "[AWS] RDS Snapshot Failed",
             message: `DB Instance: ${restoreInstance}
 Region: ${rdsConfig.region}
-Error: ${e.stack}`
+Error: ${e.message}`
          });
     }
 }

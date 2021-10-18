@@ -1,28 +1,38 @@
-service: rds-restore-to-staging-service
+service: restore-rds-target
 
 frameworkVersion: '2'
 
 # Attaching handlers
 functions:
-  rdsRestoreToStaging:
+  restoreSnapshotInstance:
     handler: src/rds-instance-handler.handler
     events:
-      - schedule: cron(06 30 * * ? *)
+      - schedule: cron(30 08 * * ? *)
+  modifyRestoredInstance:
+    handler: src/rds-instance-handler.modifyHandler
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - aws.rds
+            detail-type:
+              - RDS DB Instance Event
 
 # Default serverless stuff
 provider:
   name: aws
   runtime: nodejs14.x
+  timeout: 900
   stage: ${opt:stage, 'production'}
   targetStage: ${opt:target-stage, 'staging'}
   region: ${opt:region, 'eu-central-1'}
   lambdaHashingVersion: 20201221
   environment:
-    RESTORE_FROM_INSTANCE_ID: ${opt:db-restore-instance, 'production-2solar-services'}
-    TARGET_INSTANCE_ID: ${opt:db-targert-instance, 'staging-2solar-services'}
+    RESTORE_FROM_INSTANCE_ID: ${opt:db-restore-instance}
+    TARGET_INSTANCE_ID: ${opt:db-target-instance}
     TARGET_DB_INSTANCE_CLASS: ${opt:db-instance-class, 'db.t2.micro'}
-    TARGET_DB_SUBNET_GROUP_NAME:  ${opt:db-subnet-group-name, 'staging-2solar-subnet-group'}
-    TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups, 'sg-0952f97588d550e6e'}
+    TARGET_DB_SUBNET_GROUP_NAME:  ${opt:db-subnet-group-name}
+    TARGET_DB_SECURITY_GROUPS:  ${opt:db-security-groups}
     SSM_PATH: /${self:provider.targetStage}-db/
     CREATE_LATEST_SNAPSHOT: false
     SEND_SNS_NOTIFICATION_TOPIC_ARN: arn:aws:sns:eu-central-1:596127487546:development-alerts-alarm
@@ -41,7 +51,11 @@ provider:
           Resource: "*"
         - Effect: Allow
           Action: [ rds:* ]
-          Resource: "*"
+          Resource:
+            - arn:aws:rds:eu-central-1:596127487546:db:${opt:db-target-instance}
+        - Effect: Allow
+          Action: [ rds:CreateDBSnapshot, rds:ModifyDBInstance, rds:RestoreDBInstanceFromDBSnapshot, rds:Describe* ]
+          Resource:  "*"
         - Effect: Allow
           Action: [ lambda:InvokeFunction, lambda:RemovePermission ]
           Resource: "*"
