@@ -2,7 +2,7 @@ import {EventBridge, RDS, SNS} from 'aws-sdk';
 const AWS = require('aws-sdk');
 import {DBSnapshot} from "aws-sdk/clients/rds";
 import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./config";
-import {updateDbInstanceUsers} from "./grant-rds-mysql-privileges";
+import {updateRdsInstanceDatabasesCredentials} from "./grant-rds-mysql-privileges";
 import {RdsEventCategories} from "aws-sdk/clients/applicationinsights";
 
 const rdsConfig = {
@@ -177,34 +177,10 @@ const modifyDbInstance = async(rds: RDS): Promise<void> => {
 /**
  * Modify target instance
  */
-export const modifyHandler = async () => {
-    const event = {
-        version: '0',
-        id: '322f9ce1-4f79-e22a-2533-9cefc2edae57',
-        'detail-type': 'RDS DB Instance Event',
-        source: 'aws.rds',
-        account: '596127487546',
-        time: '2021-10-17T08:50:57Z',
-        region: 'eu-central-1',
-        resources: [
-            'arn:aws:rds:eu-central-1:596127487546:db:staging-2solar-services'
-        ],
-        detail: {
-            EventCategories: [ 'backup' ],
-            SourceType: 'DB_INSTANCE',
-            SourceArn: 'arn:aws:rds:eu-central-1:596127487546:db:staging-2solar-services',
-            Date: '2021-10-17T08:50:57.755Z',
-            Message: 'Finished DB Instance backup',
-            SourceIdentifier: 'staging-2solar-services',
-            EventID: 'RDS-EVENT-0043'
-        }
-    };
-
+export const modifyHandler = async (event) => {
     console.log(event);
 
     const detail = event.detail;
-
-
     if (detail.EventCategories.includes('backup')
         && detail.Message == 'Finished DB Instance backup'
         && detail.SourceIdentifier == targetInstance) {
@@ -212,10 +188,10 @@ export const modifyHandler = async () => {
 
         const rds = new AWS.RDS(rdsConfig);
         const info = await getTargetInstanceInfo(rds);
-        //if (!info) {
-           // await modifyDbInstance(rds);
-            await updateDbInstanceUsers();
-       // }
+        if (!info) {
+            await modifyDbInstance(rds);
+            await updateRdsInstanceDatabasesCredentials();
+        }
     }
 }
 

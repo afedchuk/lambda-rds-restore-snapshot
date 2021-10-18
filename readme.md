@@ -29,7 +29,7 @@ $ yarn or npm install
 
 In your project root run to test chat locally:
 
-`sls offline --stage development --prefix= --noPrependStageInUrl`.
+`sls offline --stage production --db-target-instance instance-name --db-restore-instance instance-name --db-instance-class db.t2.micro --db-subnet-group-name subnet-group-name --db-security-groups security-groups-ids`.
 
 It'll start server locally for testing.
 
@@ -37,7 +37,6 @@ It'll start server locally for testing.
 
 `sls deploy --db-restore-instance instance-name --db-targert-instance target-instance-name
 --db-instance-class db-class-type --db-subnet-group-name db-subnet-group-name --db-master-password db-master-password --db-security-groups db-security-groups`
-
 
 ## More information
 

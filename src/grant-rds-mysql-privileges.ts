@@ -19,12 +19,12 @@ const connection = async () => {
  * Get the list of users, filter and delete them
  * @param targetConnection
  */
-const selectAllUsersOnTargetDbInstance = async (targetConnection): Promise<void> => {
+const selectCredentialsOnTargetDbInstance = async (targetConnection): Promise<void> => {
     const promises = (await targetConnection.query(`SELECT User, Host FROM mysql.user`))
         .filter((v) => (v.Host == '%' && v.User != targetDbConfig.user))
         .map(async (v) => {
 
-           // return deleteUsersSpecifiedInTheList(targetConnection, v);
+           return deleteUsersSpecifiedInTheList(targetConnection, v);
         });
 
     targetConnection.end();
@@ -78,7 +78,7 @@ const runCustomQueries = async(targetConnection): Promise<void> => {
  * /path/{database-name}-{database-parameter}
  * where database-parameter is DB username or DB password
  */
-const getUsersCredentialsFromSsm = async () => {
+const getCredentialsFromSsm = async () => {
     const retrieveParameters = async (nextToken = null, data: { name: string, value: string }[] = []): Promise<any> => {
         const params: SSM.Types.GetParametersByPathRequest = {
             Path: ssmPath,
@@ -121,7 +121,7 @@ const getUsersCredentialsFromSsm = async () => {
  * @param targetConnection
  * @param data
  */
-const createAndGrantPermissionForMappedUsers = async (targetConnection, data) => {
+const createAndGrantPermissionsOnTargetDbInstanc = async (targetConnection, data) => {
     const promises = Object.keys(data).map(async (v) => {
 
         const existing = await targetConnection.query(`SELECT User, Host FROM mysql.user WHERE User = '${data[v]['username']}'`);
@@ -147,8 +147,8 @@ const createAndGrantPermissionForMappedUsers = async (targetConnection, data) =>
 /**
  * Map all parameters extracted from SSM
  */
-export const updateDbInstanceUsers = async () => {
-    const result = await getUsersCredentialsFromSsm();
+export const updateRdsInstanceDatabasesCredentials = async () => {
+    const result = await getCredentialsFromSsm();
     const mapped = [];
     result.map(value => {
         const [, , serviceCredentials] = value.name.split('/');
@@ -164,8 +164,8 @@ export const updateDbInstanceUsers = async () => {
     });
 
     const targetConnection = await connection();
-    //await selectAllUsersOnTargetDbInstance(targetConnection);
-    // await createAndGrantPermissionForMappedUsers(targetConnection, mapped);
+    await selectCredentialsOnTargetDbInstance(targetConnection);
+    await createAndGrantPermissionsOnTargetDbInstanc(targetConnection, mapped);
 
     /** Optional step to modify db(s) data on target instance **/
     await runCustomQueries(targetConnection);
