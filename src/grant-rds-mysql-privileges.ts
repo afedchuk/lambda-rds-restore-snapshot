@@ -121,7 +121,7 @@ const getCredentialsFromSsm = async () => {
  * @param targetConnection
  * @param data
  */
-const createAndGrantPermissionsOnTargetDbInstanc = async (targetConnection, data) => {
+const createAndGrantPermissionsOnTargetDbInstance = async (targetConnection, data) => {
     const promises = Object.keys(data).map(async (v) => {
 
         const existing = await targetConnection.query(`SELECT User, Host FROM mysql.user WHERE User = '${data[v]['username']}'`);
@@ -133,8 +133,6 @@ const createAndGrantPermissionsOnTargetDbInstanc = async (targetConnection, data
         await targetConnection.query(`CREATE user '${data[v]['username']}'
             IDENTIFIED BY '${data[v]['password']}'`);
 
-        console.log(`GRANT ALL PRIVILEGES
-            ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`)
         await targetConnection.query(`GRANT ALL PRIVILEGES
             ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`);
 
@@ -165,7 +163,7 @@ export const updateRdsInstanceDatabasesCredentials = async () => {
 
     const targetConnection = await connection();
     await selectCredentialsOnTargetDbInstance(targetConnection);
-    await createAndGrantPermissionsOnTargetDbInstanc(targetConnection, mapped);
+    await createAndGrantPermissionsOnTargetDbInstance(targetConnection, mapped);
 
     /** Optional step to modify db(s) data on target instance **/
     await runCustomQueries(targetConnection);

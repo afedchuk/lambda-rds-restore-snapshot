@@ -27,10 +27,6 @@ provider:
   targetStage: ${opt:target-stage, 'staging'}
   region: ${opt:region, 'eu-central-1'}
   lambdaHashingVersion: 20201221
-  deploymentBucket:
-    name: 2solar-lambda-deploys
-    maxPreviousDeploymentArtifacts: 2
-  deploymentPrefix: "${opt:stage}-2solar-rds-restore-to-target"
   environment:
     RESTORE_FROM_INSTANCE_ID: ${opt:db-restore-instance}
     TARGET_INSTANCE_ID: ${opt:db-target-instance}
