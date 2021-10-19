@@ -1,9 +1,8 @@
-import {EventBridge, RDS, SNS} from 'aws-sdk';
+import {RDS, SNS} from 'aws-sdk';
 const AWS = require('aws-sdk');
 import {DBSnapshot} from "aws-sdk/clients/rds";
 import {restoreInstance, targetDbInstanceModify, targetDbInstanceRestore, targetInstance} from "./config";
 import {updateRdsInstanceDatabasesCredentials} from "./grant-rds-mysql-privileges";
-import {RdsEventCategories} from "aws-sdk/clients/applicationinsights";
 
 const rdsConfig = {
     apiVersion: '2014-10-31',
@@ -138,7 +137,7 @@ const takeLatestDbSnapshot = async (rds: RDS, snapshotIdentifier: string = null)
 
     const snapshots: RDS.Types.DBSnapshotMessage = await rds.describeDBSnapshots(params).promise();
     if (snapshots.DBSnapshots.length > 0) {
-        const latest = snapshots.DBSnapshots.shift();
+        const latest = snapshots.DBSnapshots.pop();
         console.log(`Snapshot found: ${latest.DBSnapshotIdentifier}`);
 
         return latest;
