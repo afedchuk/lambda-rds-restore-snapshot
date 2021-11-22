@@ -1,6 +1,6 @@
 import {SSM} from 'aws-sdk';
 import {targetDbConfig} from "./config";
-
+const path = require('path');
 const ssm = new SSM();
 const ssmPath = process.env.SSM_PATH;
 const dbServicePostPrefix = '_service';
@@ -20,11 +20,12 @@ const connection = async () => {
  * @param targetConnection
  */
 const selectCredentialsOnTargetDbInstance = async (targetConnection): Promise<void> => {
-    const promises = (await targetConnection.query(`SELECT User, Host FROM mysql.user`))
+    const promises = (await targetConnection.query(`SELECT User, Host
+                                                    FROM mysql.user`))
         .filter((v) => (v.Host == '%' && v.User != targetDbConfig.user))
         .map(async (v) => {
 
-           return deleteUsersSpecifiedInTheList(targetConnection, v);
+             return deleteUsersSpecifiedInTheList(targetConnection, v);
         });
 
     targetConnection.end();
@@ -50,11 +51,11 @@ const deleteUsersSpecifiedInTheList = async (targetConnection, user): Promise<vo
  * Reading an execute custom queries from sql file.
  * @param targetConnection
  */
-const runCustomQueries = async(targetConnection): Promise<void> => {
+const runCustomQueries = async (targetConnection): Promise<void> => {
     const fs = require("fs");
 
     try {
-        const dataSql = await fs.readFileSync('./src/queries/mysql.sql').toString();
+        const dataSql = await fs.readFileSync(path.resolve(process.cwd(), './src/queries/mysql.sql')).toString();
         const data = dataSql.toString().split(";");
 
         let results = targetConnection.transaction();
@@ -66,7 +67,7 @@ const runCustomQueries = async(targetConnection): Promise<void> => {
 
         await results.commit();
     } catch (error) {
-        console.log(`File not found. ${error.message}`);
+        console.log(`Could not run custom queries. ${error.message}`);
     }
 
 }
@@ -124,14 +125,13 @@ const getCredentialsFromSsm = async () => {
 const createAndGrantPermissionsOnTargetDbInstance = async (targetConnection, data) => {
     const promises = Object.keys(data).map(async (v) => {
 
-        const existing = await targetConnection.query(`SELECT User, Host FROM mysql.user WHERE User = '${data[v]['username']}'`);
-        if (existing.length > 0) {
-
-            return;
-        }
-
-        await targetConnection.query(`CREATE user '${data[v]['username']}'
-            IDENTIFIED BY '${data[v]['password']}'`);
+        await targetConnection.transaction()
+            .query('FLUSH PRIVILEGES')
+            .query('SELECT User, Host FROM mysql.user WHERE User = ?', [data[v]['username']])
+            .query(r => {
+                return ['CREATE user ?@? IDENTIFIED BY ?', [data[v]['username'], '%', data[v]['password']]]
+            })
+            .commit();
 
         await targetConnection.query(`GRANT ALL PRIVILEGES
             ON ${[v, dbServicePostPrefix].join('')}.* TO '${data[v]['username']}'`);
@@ -140,6 +140,8 @@ const createAndGrantPermissionsOnTargetDbInstance = async (targetConnection, dat
     });
 
     await Promise.all(promises);
+
+    console.log('DB users created and access granted.');
 }
 
 /**
@@ -150,15 +152,17 @@ export const updateRdsInstanceDatabasesCredentials = async () => {
     const mapped = [];
     result.map(value => {
         const [, , serviceCredentials] = value.name.split('/');
-        const [service, parameter] = serviceCredentials.split('-');
+        const [service, parameter, ...rest] = serviceCredentials.split('-');
         if (parameter == undefined) {
 
             return;
         }
 
-        mapped[service] = Object.assign(mapped[service] ?? {}, {
-            [parameter]: value.value
-        });
+        if (rest.length == 0) {
+            mapped[service] = Object.assign(mapped[service] ?? {}, {
+                [parameter]: value.value
+            });
+        }
     });
 
     const targetConnection = await connection();

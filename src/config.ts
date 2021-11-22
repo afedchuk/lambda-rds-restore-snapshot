@@ -23,6 +23,15 @@ export const targetDbInstanceRestore: RDS.Types.RestoreDBInstanceFromDBSnapshotM
      * The DB subnet group name to use for the new instance.
      */
     DBSubnetGroupName: process.env.TARGET_DB_SUBNET_GROUP_NAME,
+
+    /** A list of EC2 VPC security groups to authorize on this DB instance.
+     * Put your security groups with `,` **/
+    VpcSecurityGroupIds: process.env.TARGET_DB_SECURITY_GROUPS
+        ? process.env.TARGET_DB_SECURITY_GROUPS.split(',')
+        : [],
+
+    /** Change accessibility here if you need **/
+    PubliclyAccessible: true,
 }
 
 export const targetDbInstanceModify: RDS.Types.ModifyDBInstanceMessage  = {
@@ -43,13 +52,7 @@ export const targetDbInstanceModify: RDS.Types.ModifyDBInstanceMessage  = {
     /**
      * The number of days to retain automated backups.
      */
-    BackupRetentionPeriod: 0,
-
-    /** A list of EC2 VPC security groups to authorize on this DB instance.
-     * Put your security groups with `,` **/
-    VpcSecurityGroupIds:  process.env.TARGET_DB_SECURITY_GROUPS
-        ? process.env.TARGET_DB_SECURITY_GROUPS.split(',')
-        : []
+    BackupRetentionPeriod: 0
 }
 
 /**

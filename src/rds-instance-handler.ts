@@ -183,13 +183,15 @@ export const modifyHandler = async (event) => {
     if (detail.EventCategories.includes('backup')
         && detail.Message == 'Finished DB Instance backup'
         && detail.SourceIdentifier == targetInstance) {
-
-
         const rds = new AWS.RDS(rdsConfig);
         const info = await getTargetInstanceInfo(rds);
         if (!info) {
-            await modifyDbInstance(rds);
             await updateRdsInstanceDatabasesCredentials();
+
+            /**
+             * Skip RDS update process
+             * await modifyDbInstance(rds);
+             */
         }
     }
 }
